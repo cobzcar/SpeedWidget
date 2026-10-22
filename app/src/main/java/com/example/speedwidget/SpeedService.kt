@@ -22,6 +22,7 @@ import androidx.core.app.ServiceCompat
 class SpeedService : Service(), LocationListener {
 
     private lateinit var locationManager: LocationManager
+    private lateinit var overlay: OverlayController
     private var lastLocation: Location? = null
     private var tripKm = 0f
     private var maxKmh = 0f
@@ -29,10 +30,22 @@ class SpeedService : Service(), LocationListener {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
+        overlay = OverlayController(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        // Activer / désactiver le widget flottant pendant que le suivi tourne
+        if (intent?.action == ACTION_OVERLAY_SYNC) {
+            if (SpeedState.read(this).running) {
+                overlay.syncWithPrefs()
+                overlay.update(SpeedState.read(this))
+                return START_STICKY
+            }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -59,8 +72,11 @@ class SpeedService : Service(), LocationListener {
             return START_NOT_STICKY
         }
 
-        SpeedState.write(this, previous.copy(running = true, speedKmh = 0f))
+        val started = previous.copy(running = true, speedKmh = 0f)
+        SpeedState.write(this, started)
         SpeedWidgetProvider.updateAll(this)
+        overlay.syncWithPrefs()
+        overlay.update(started)
         return START_STICKY
     }
 
@@ -74,8 +90,10 @@ class SpeedService : Service(), LocationListener {
         lastLocation = location
         if (speed > maxKmh) maxKmh = speed
 
-        SpeedState.write(this, SpeedSnapshot(speed, maxKmh, tripKm, true))
+        val snapshot = SpeedSnapshot(speed, maxKmh, tripKm, true)
+        SpeedState.write(this, snapshot)
         SpeedWidgetProvider.updateAll(this)
+        overlay.update(snapshot)
     }
 
     // Requis pour Android 8 à 10 (méthodes abstraites de l'interface)
@@ -85,6 +103,7 @@ class SpeedService : Service(), LocationListener {
     override fun onProviderDisabled(provider: String) {}
 
     override fun onDestroy() {
+        overlay.hide()
         locationManager.removeUpdates(this)
         val s = SpeedState.read(this)
         SpeedState.write(this, s.copy(running = false, speedKmh = 0f))
@@ -123,6 +142,7 @@ class SpeedService : Service(), LocationListener {
     companion object {
         const val ACTION_START = "com.example.speedwidget.START"
         const val ACTION_STOP = "com.example.speedwidget.STOP"
+        const val ACTION_OVERLAY_SYNC = "com.example.speedwidget.OVERLAY_SYNC"
         private const val CHANNEL_ID = "speed_tracking"
         private const val NOTIF_ID = 1
     }

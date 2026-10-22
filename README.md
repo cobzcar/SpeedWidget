@@ -27,3 +27,17 @@ Widget de vitesse GPS redimensionnable, avec 3 présentations qui changent autom
 - **Android Studio** : menu *Build → Build Bundle(s) / APK(s) → Build APK(s)*. Le fichier se trouve dans `app/build/outputs/apk/debug/app-debug.apk`.
 - **Sans Android Studio** : poussez ce dossier sur un dépôt GitHub. Le workflow `.github/workflows/build-apk.yml` compile l'APK automatiquement (onglet *Actions* → dernier run → artefact `SpeedWidget-apk`).
 - Pour l'installer, autorisez « Installer des applications inconnues » sur le téléphone.
+
+## Widget flottant (AI box de voiture, BigdroidOS…)
+
+Certains écrans n'acceptent pas les widgets Android. L'application propose alors un **widget flottant** affiché par-dessus toutes les autres applis :
+
+1. Ouvrez l'app puis appuyez sur **Afficher le widget flottant**.
+2. Autorisez « Afficher par-dessus les autres applis », revenez dans l'app et appuyez de nouveau (le suivi GPS démarre).
+3. Sur le widget : **glisser** = déplacer · **pincer** = redimensionner · **appui simple** = changer de format (petit → moyen → grand).
+4. Pour l'arrêter : bouton **Masquer le widget flottant**, ou **Arrêter** dans la notification.
+
+Si l'écran « par-dessus les autres applis » n'existe pas sur la box, accordez la permission par ADB :
+`adb shell appops set com.example.speedwidget SYSTEM_ALERT_WINDOW allow`
+
+La vitesse vient du GPS de l'appareil : si la box n'a pas de puce GPS, le widget affichera « -- ».

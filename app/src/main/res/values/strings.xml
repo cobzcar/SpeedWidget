@@ -13,11 +13,16 @@
     <string name="stop">Arrêter</string>
     <string name="reset_trip">Réinitialiser trajet et vitesse max</string>
     <string name="add_widget">Ajouter le widget à l\'écran d\'accueil</string>
+    <string name="overlay_on">Afficher le widget flottant (AI box / voiture)</string>
+    <string name="overlay_off">Masquer le widget flottant</string>
+    <string name="overlay_permission">Autorisez « Afficher par-dessus les autres applis » pour cette application, puis revenez et appuyez de nouveau.</string>
+    <string name="overlay_no_settings">Impossible d\'ouvrir ce réglage sur cet appareil. Activez-le par ADB (voir le README).</string>
+    <string name="overlay_failed">Impossible d\'afficher le widget flottant.</string>
     <string name="status_on">Suivi GPS actif</string>
     <string name="status_off">Suivi GPS arrêté</string>
     <string name="permission_needed">La permission de localisation est nécessaire pour mesurer la vitesse.</string>
     <string name="pin_unsupported">Votre lanceur ne permet pas l\'ajout direct. Faites un appui long sur l\'écran d\'accueil, puis Widgets.</string>
-    <string name="help">Astuce : appuyez sur le widget pour démarrer ou arrêter le suivi. Étirez-le pour passer de petit (texte) à moyen (jauge) puis grand (jauge + trajet).</string>
+    <string name="help">Astuce : appuyez sur le widget pour démarrer ou arrêter le suivi. Étirez-le pour passer de petit (texte) à moyen puis grand. Widget flottant : glissez pour le déplacer, pincez pour le redimensionner, appuyez pour changer de format.</string>
 
     <string name="notif_channel">Suivi de la vitesse</string>
     <string name="notif_title">Compteur de vitesse actif</string>

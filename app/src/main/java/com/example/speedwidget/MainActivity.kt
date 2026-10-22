@@ -6,7 +6,9 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.Button
@@ -21,6 +23,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var status: TextView
     private lateinit var toggle: Button
+    private lateinit var overlayButton: Button
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -69,6 +72,11 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { SpeedState.resetTrip(this@MainActivity); refresh() }
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(56)).apply { topMargin = px(12) })
 
+        overlayButton = Button(this).apply {
+            setOnClickListener { toggleOverlay() }
+        }
+        root.addView(overlayButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(56)).apply { topMargin = px(12) })
+
         root.addView(Button(this).apply {
             text = getString(R.string.add_widget)
             setOnClickListener { pinWidget() }
@@ -93,6 +101,35 @@ class MainActivity : ComponentActivity() {
         val s = SpeedState.read(this)
         status.text = if (s.running) getString(R.string.status_on) else getString(R.string.status_off)
         toggle.text = if (s.running) getString(R.string.stop) else getString(R.string.start)
+        overlayButton.text = getString(
+            if (OverlayController.isEnabled(this) && Settings.canDrawOverlays(this)) R.string.overlay_off
+            else R.string.overlay_on
+        )
+    }
+
+    /** Widget flottant : pour les écrans (AI box de voiture…) qui n'acceptent pas les widgets Android. */
+    private fun toggleOverlay() {
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, R.string.overlay_permission, Toast.LENGTH_LONG).show()
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                )
+            } catch (e: Exception) {
+                Toast.makeText(this, R.string.overlay_no_settings, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
+        val enable = !OverlayController.isEnabled(this)
+        OverlayController.setEnabled(this, enable)
+
+        if (SpeedState.read(this).running) {
+            startService(Intent(this, SpeedService::class.java).setAction(SpeedService.ACTION_OVERLAY_SYNC))
+        } else if (enable) {
+            requestAndStart() // le widget flottant apparaît dès que le suivi démarre
+        }
+        window.decorView.postDelayed({ refresh() }, 300)
     }
 
     private fun hasLocationPermission() =

@@ -6,10 +6,12 @@ import android.graphics.BitmapFactory
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -217,6 +219,45 @@ object GaugeRenderer {
             spec, shown, tickLit, glow(tickLit, spec.tickGlowBlur),
             ringLit, ringLit?.let { glow(it, 4f) }
         )
+    }
+
+    /** Petit format : vitesse + « km/h » sur fond sombre (même rendu que le petit widget classique). */
+    fun renderSmall(speedKmh: Float, running: Boolean): Bitmap {
+        val w = 360
+        val h = 180
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        val box = RectF(2f, 2f, w - 2f, h - 2f)
+
+        c.drawRoundRect(box, 40f, 40f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(0f, 0f, 0f, h.toFloat(), Color.rgb(27, 32, 51), Color.rgb(5, 7, 15), Shader.TileMode.CLAMP)
+        })
+        c.drawRoundRect(box, 40f, 40f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+            color = Color.argb(85, 255, 90, 77)
+        })
+
+        val text = if (running) speedKmh.roundToInt().toString() else "--"
+        val number = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textAlign = Paint.Align.LEFT
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = if (text.length >= 3) 92f else 108f
+            setShadowLayer(14f, 0f, 0f, RED)
+        }
+        val tb = Rect()
+        number.getTextBounds(text, 0, text.length, tb)
+        c.drawText(text, w / 2f - (tb.left + tb.right) / 2f, h * 0.42f - (tb.top + tb.bottom) / 2f, number)
+
+        val unit = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = RED
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 34f
+        }
+        c.drawText("km/h", w / 2f, h * 0.88f, unit)
+        return out
     }
 
     fun renderMedium(context: Context, speedKmh: Float, running: Boolean, hint: String?): Bitmap =
