@@ -87,18 +87,15 @@ class SpeedWidgetProvider : AppWidgetProvider() {
                 MEDIUM -> RemoteViews(context.packageName, R.layout.widget_medium).apply {
                     setImageViewBitmap(
                         R.id.gauge_image,
-                        GaugeRenderer.render(320, s.speedKmh, s.running, hint)
+                        GaugeRenderer.renderMedium(context, s.speedKmh, s.running, hint)
                     )
                 }
 
                 else -> RemoteViews(context.packageName, R.layout.widget_large).apply {
                     setImageViewBitmap(
                         R.id.gauge_image,
-                        GaugeRenderer.renderOnCar(context, 480, 720, s.speedKmh, s.running)
+                        GaugeRenderer.renderLarge(context, s.speedKmh, s.running, hint)
                     )
-                    setTextViewText(R.id.trip_value, String.format("%.1f km", s.tripKm))
-                    setTextViewText(R.id.max_value, "${s.maxKmh.roundToInt()} km/h")
-                    setTextViewText(R.id.status_text, hint ?: context.getString(R.string.tap_to_stop))
                 }
             }
             views.setOnClickPendingIntent(R.id.root, clickIntent(context, s.running))

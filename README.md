@@ -5,8 +5,8 @@ Widget de vitesse GPS redimensionnable, avec 3 présentations qui changent autom
 | Taille | Affichage |
 |--------|-----------|
 | Petit (ex. 1x1, 2x1) | Texte de la vitesse + « km/h » |
-| Moyen (ex. 2x2) | Jauge néon rouge, vitesse au centre |
-| Grand (ex. 2x3) | Visuel voiture en fond, jauge néon, distance du trajet et vitesse max |
+| Moyen (ex. 2x2) | Votre image `widget_medium.png` + chiffre de vitesse, graduations allumées, aiguille |
+| Grand (ex. 2x3) | Votre image `widget_grand.png` + chiffre de vitesse, graduations allumées, arc et aiguille |
 
 ## Ouvrir et lancer
 
@@ -20,7 +20,7 @@ Widget de vitesse GPS redimensionnable, avec 3 présentations qui changent autom
 - Couleurs et graduations : `GaugeRenderer.kt` (vitesse max de la jauge : paramètre `maxKmh`, 240 par défaut).
 - Seuils de changement de taille : `SpeedWidgetProvider.kt` (valeurs en dp).
 - Textes : `res/values/strings.xml`.
-- Images d'aperçu dans le sélecteur de widgets : `res/drawable/preview_large.png` et `preview_medium.png`. Fond du grand widget : `res/drawable-nodpi/bg_car.png` (remplaçable ; la jauge est centrée à 31 % de la hauteur, voir `renderOnCar`).
+- Images d'aperçu dans le sélecteur de widgets : `res/drawable/preview_large.png` et `preview_medium.png`. Images des cadrans : `res/drawable-nodpi/face_medium.png` et `face_large.png` (si vous les changez, ajustez les coordonnées dans `GaugeRenderer.kt`, objets `MEDIUM` et `LARGE`).
 
 ## Obtenir l'APK
 

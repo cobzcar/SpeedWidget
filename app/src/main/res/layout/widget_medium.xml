@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MOYEN : jauge néon avec la vitesse au centre -->
+<!-- MOYEN : votre image widget_medium.png + vitesse et jauge dessinées dessus -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_dark"
-    android:padding="6dp">
+    android:layout_height="match_parent">
 
     <ImageView
         android:id="@+id/gauge_image"

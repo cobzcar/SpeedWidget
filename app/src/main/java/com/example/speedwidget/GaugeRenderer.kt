@@ -7,174 +7,284 @@ import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RadialGradient
-import android.graphics.Rect
+import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.Shader
 import android.graphics.Typeface
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** Dessine la jauge néon rouge (style de vos visuels) dans un Bitmap carré. */
+/**
+ * Utilise VOS images (face_medium.png / face_large.png) comme cadran et ajoute dessus :
+ *  - le chiffre de la vitesse,
+ *  - la jauge : graduations qui s'allument, aiguille lumineuse (+ anneau pour le moyen / arc pour le grand).
+ *
+ * Les angles sont en degrés, 0 = en haut, sens horaire. Toutes les coordonnées sont celles
+ * des images d'origine (512x512 et 323x485).
+ */
 object GaugeRenderer {
 
-    private val RED = Color.parseColor("#FF5A4D")
-    private val RED_DIM = Color.parseColor("#55FF5A4D")
-    private val DARK_1 = Color.parseColor("#151B30")
-    private val DARK_2 = Color.parseColor("#070A14")
+    private const val SCALE = 1.5f        // rendu plus net que l'image d'origine
+    private const val MAX_KMH = 240f      // vitesse en bout de jauge
 
-    private const val START_ANGLE = 135f
-    private const val SWEEP = 270f
-    private const val TICKS = 48 // une graduation tous les 5 km/h sur 240 km/h
+    private val RED = Color.rgb(255, 90, 77)
 
-    fun render(
-        size: Int,
-        speedKmh: Float,
-        running: Boolean,
-        hint: String?,
-        maxKmh: Float = 240f
-    ): Bitmap {
-        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bmp), size / 2f, size / 2f, size, speedKmh, running, hint, maxKmh, 255)
-        return bmp
+    private class Ring(
+        val cx: Float, val cy: Float, val minR: Float, val maxR: Float,
+        val a0: Float, val a1: Float
+    )
+
+    private class Spec(
+        val resId: Int,
+        // graduations
+        val cx: Float, val cy: Float,
+        val a0: Float, val a1: Float,
+        val tickMinR: Float, val tickMaxR: Float,
+        val tickLit: Int,
+        val tickGlowBlur: Float,
+        val redTicks: Boolean,            // true : graduations rouges dans l'image, false : blanches
+        // aiguille
+        val needleInner: Float, val needleOuter: Float, val needleWidth: Float,
+        // anneau extérieur de l'image (moyen) ou arc dessiné (grand)
+        val ring: Ring?,
+        val arcR: Float, val arcWidth: Float,
+        // textes
+        val numX: Float, val numY: Float, val numSize: Float, val numSize3: Float,
+        val hintY: Float, val hintSize: Float
+    )
+
+    private val MEDIUM = Spec(
+        resId = R.drawable.face_medium,
+        cx = 256f, cy = 262f, a0 = -112f, a1 = 112f,
+        tickMinR = 120f, tickMaxR = 196f,
+        tickLit = Color.rgb(255, 236, 226), tickGlowBlur = 5f, redTicks = true,
+        needleInner = 128f, needleOuter = 182f, needleWidth = 6f,
+        ring = Ring(255.5f, 270.5f, 204f, 232f, -118.4f, 118.4f),
+        arcR = 0f, arcWidth = 0f,
+        numX = 280f, numY = 240f, numSize = 124f, numSize3 = 104f,
+        hintY = 300f, hintSize = 20f
+    )
+
+    private val LARGE = Spec(
+        resId = R.drawable.face_large,
+        cx = 162.25f, cy = 168.5f, a0 = -150f, a1 = 150f,
+        tickMinR = 78f, tickMaxR = 106f,
+        tickLit = Color.rgb(255, 84, 64), tickGlowBlur = 2.5f, redTicks = false,
+        needleInner = 80f, needleOuter = 104f, needleWidth = 3f,
+        ring = null,
+        arcR = 110.5f, arcWidth = 5f,
+        numX = 162f, numY = 172f, numSize = 48f, numSize3 = 40f,
+        hintY = 198f, hintSize = 10f
+    )
+
+    /** Calques précalculés une seule fois (graduations « allumées » + halo). */
+    private class Face(
+        val spec: Spec,
+        val base: Bitmap,
+        val tickLit: Bitmap,
+        val tickGlow: Bitmap,
+        val ringLit: Bitmap?,
+        val ringGlow: Bitmap?
+    )
+
+    private val faces = HashMap<Int, Face>()
+
+    @Synchronized
+    private fun face(context: Context, spec: Spec): Face = faces.getOrPut(spec.resId) {
+        val opts = BitmapFactory.Options().apply { inScaled = false }
+        val base = BitmapFactory.decodeResource(context.resources, spec.resId, opts)
+        val w = base.width
+        val h = base.height
+        val px = IntArray(w * h)
+        base.getPixels(px, 0, w, 0, 0, w, h)
+
+        val ticks = IntArray(w * h)
+        val ring = if (spec.ring != null) IntArray(w * h) else null
+
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val p = px[y * w + x]
+                val r = Color.red(p)
+                val g = Color.green(p)
+                val b = Color.blue(p)
+                val rt = hypot(x - spec.cx, y - spec.cy)
+
+                if (rt in spec.tickMinR..spec.tickMaxR) {
+                    var alpha = 0f
+                    if (spec.redTicks) {
+                        // graduations rouges : exclure la zone de l'anneau
+                        val rg = spec.ring
+                        val rr = if (rg != null) hypot(x - rg.cx, y - rg.cy) else 0f
+                        if ((rg == null || rr < rg.minR) && r >= 120 && r - b >= 50) {
+                            alpha = (r - 100) / 120f
+                        }
+                    } else {
+                        // graduations blanches (voiture exclue : angle et hauteur limités)
+                        val ang = Math.toDegrees(atan2((x - spec.cx).toDouble(), -(y - spec.cy).toDouble()))
+                        val mn = min(r, min(g, b))
+                        val mx = max(r, max(g, b))
+                        if (abs(ang) <= 135.0 && y < 235 && mn >= 125 && mx - mn <= 70) {
+                            alpha = (mn - 100) / 80f
+                        }
+                    }
+                    if (alpha > 0f) {
+                        val a = (alpha.coerceIn(0f, 1f) * 255).toInt()
+                        ticks[y * w + x] = Color.argb(
+                            a, Color.red(spec.tickLit), Color.green(spec.tickLit), Color.blue(spec.tickLit)
+                        )
+                    }
+                }
+
+                val rg = spec.ring
+                if (rg != null && ring != null) {
+                    val rr = hypot(x - rg.cx, y - rg.cy)
+                    if (rr in rg.minR..rg.maxR && r >= 120 && r - b >= 50) {
+                        val a = (((r - 100) / 120f).coerceIn(0f, 1f) * 255).toInt()
+                        ring[y * w + x] = Color.argb(a, 255, 214, 204)
+                    }
+                }
+            }
+        }
+
+        fun layer(data: IntArray): Bitmap {
+            val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            bm.setPixels(data, 0, w, 0, 0, w, h)
+            return bm
+        }
+
+        fun glow(bm: Bitmap, blur: Float): Bitmap =
+            bm.extractAlpha(Paint().apply { maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL) }, null)
+
+        val tickLit = layer(ticks)
+        val ringLit = ring?.let { layer(it) }
+        Face(
+            spec, base, tickLit, glow(tickLit, spec.tickGlowBlur),
+            ringLit, ringLit?.let { glow(it, 4f) }
+        )
     }
 
-    /**
-     * GRAND widget : visuel de la voiture en fond, la jauge est dessinée par-dessus
-     * à l'emplacement du cadran du visuel (qu'elle recouvre).
-     */
-    fun renderOnCar(context: Context, w: Int, h: Int, speedKmh: Float, running: Boolean): Bitmap {
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val c = Canvas(bmp)
-        c.drawBitmap(carBackground(context), null, Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
-        val size = (w * 0.92f).toInt()
-        draw(c, w / 2f, h * 0.31f, size, speedKmh, running, null, 240f, 235)
-        return bmp
-    }
+    fun renderMedium(context: Context, speedKmh: Float, running: Boolean, hint: String?): Bitmap =
+        render(face(context, MEDIUM), speedKmh, running, hint)
 
-    private var cachedCar: Bitmap? = null
+    fun renderLarge(context: Context, speedKmh: Float, running: Boolean, hint: String?): Bitmap =
+        render(face(context, LARGE), speedKmh, running, hint)
 
-    private fun carBackground(context: Context): Bitmap =
-        cachedCar ?: BitmapFactory.decodeResource(
-            context.resources,
-            R.drawable.bg_car,
-            BitmapFactory.Options().apply { inScaled = false }
-        ).also { cachedCar = it }
+    private fun render(f: Face, speedKmh: Float, running: Boolean, hint: String?): Bitmap {
+        val s = f.spec
+        val out = Bitmap.createBitmap(
+            (f.base.width * SCALE).toInt(), (f.base.height * SCALE).toInt(), Bitmap.Config.ARGB_8888
+        )
+        val c = Canvas(out)
+        c.scale(SCALE, SCALE)
 
-    private fun draw(
-        c: Canvas,
-        cx: Float,
-        cy: Float,
-        size: Int,
-        speedKmh: Float,
-        running: Boolean,
-        hint: String?,
-        maxKmh: Float,
-        discAlpha: Int
-    ) {
-        val outer = size / 2f - size * 0.05f
-        val frac = if (running) (speedKmh / maxKmh).coerceIn(0f, 1f) else 0f
+        val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+        c.drawBitmap(f.base, 0f, 0f, bitmapPaint)
 
-        // Disque sombre
-        val disc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(cx, cy, outer, intArrayOf(DARK_1, DARK_2), null, Shader.TileMode.CLAMP)
-            alpha = discAlpha
-        }
-        c.drawCircle(cx, cy, outer * 0.9f, disc)
-
-        // Arc extérieur (piste + progression lumineuse)
-        val rect = RectF(cx - outer, cy - outer, cx + outer, cy + outer)
-        val stroke = size * 0.035f
-
-        val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = stroke
-            strokeCap = Paint.Cap.ROUND
-            color = RED_DIM
-        }
-        c.drawArc(rect, START_ANGLE, SWEEP, false, track)
+        val frac = if (running) (speedKmh / MAX_KMH).coerceIn(0f, 1f) else 0f
+        val angle = s.a0 + (s.a1 - s.a0) * frac
 
         if (frac > 0f) {
-            val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = stroke * 1.6f
-                strokeCap = Paint.Cap.ROUND
-                color = RED
-                maskFilter = BlurMaskFilter(stroke * 1.2f, BlurMaskFilter.Blur.NORMAL)
+            // Graduations allumées jusqu'à la vitesse actuelle
+            c.save()
+            c.clipPath(wedge(s.cx, s.cy, s.tickMaxR + 80f, s.a0, angle))
+            val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = RED; alpha = 255 }
+            c.drawBitmap(f.tickGlow, 0f, 0f, glowPaint)
+            c.drawBitmap(f.tickGlow, 0f, 0f, glowPaint)
+            c.drawBitmap(f.tickLit, 0f, 0f, bitmapPaint)
+            c.restore()
+
+            // Anneau extérieur de l'image (moyen)
+            val rg = s.ring
+            if (rg != null && f.ringLit != null && f.ringGlow != null) {
+                val ringAngle = rg.a0 + (rg.a1 - rg.a0) * frac
+                c.save()
+                c.clipPath(wedge(rg.cx, rg.cy, rg.maxR + 80f, rg.a0, ringAngle))
+                c.drawBitmap(f.ringGlow, 0f, 0f, glowPaint)
+                c.drawBitmap(f.ringLit, 0f, 0f, bitmapPaint)
+                c.restore()
             }
-            val crisp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
-                strokeWidth = stroke
-                strokeCap = Paint.Cap.ROUND
-                color = RED
+
+            // Arc lumineux sur le cadre (grand)
+            if (s.arcR > 0f) {
+                val rect = RectF(s.cx - s.arcR, s.cy - s.arcR, s.cx + s.arcR, s.cy + s.arcR)
+                val arcGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = s.arcWidth * 1.8f
+                    strokeCap = Paint.Cap.ROUND
+                    color = s.tickLit
+                    maskFilter = BlurMaskFilter(s.arcWidth * 0.9f, BlurMaskFilter.Blur.NORMAL)
+                }
+                val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = s.arcWidth
+                    strokeCap = Paint.Cap.ROUND
+                    color = s.tickLit
+                }
+                c.drawArc(rect, s.a0 - 90f, angle - s.a0, false, arcGlow)
+                c.drawArc(rect, s.a0 - 90f, angle - s.a0, false, arc)
             }
-            c.drawArc(rect, START_ANGLE, SWEEP * frac, false, glow)
-            c.drawArc(rect, START_ANGLE, SWEEP * frac, false, crisp)
         }
 
-        // Graduations
-        val tickOuter = outer * 0.80f
-        val litGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // Aiguille lumineuse
+        val rad = Math.toRadians(angle.toDouble())
+        val x0 = s.cx + sin(rad).toFloat() * s.needleInner
+        val y0 = s.cy - cos(rad).toFloat() * s.needleInner
+        val x1 = s.cx + sin(rad).toFloat() * s.needleOuter
+        val y1 = s.cy - cos(rad).toFloat() * s.needleOuter
+        val needleGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
+            strokeWidth = s.needleWidth * 2.2f
             color = RED
-            maskFilter = BlurMaskFilter(size * 0.012f, BlurMaskFilter.Blur.NORMAL)
+            maskFilter = BlurMaskFilter(s.needleWidth * 1.3f, BlurMaskFilter.Blur.NORMAL)
         }
-        val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val needle = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
+            strokeWidth = s.needleWidth
+            color = Color.rgb(255, 240, 235)
         }
-        for (i in 0..TICKS) {
-            val ratio = i / TICKS.toFloat()
-            val a = Math.toRadians((START_ANGLE + SWEEP * ratio).toDouble())
-            val major = i % 4 == 0
-            val len = if (major) outer * 0.15f else outer * 0.08f
-            val lit = ratio <= frac && running
-            val x1 = cx + cos(a).toFloat() * tickOuter
-            val y1 = cy + sin(a).toFloat() * tickOuter
-            val x2 = cx + cos(a).toFloat() * (tickOuter - len)
-            val y2 = cy + sin(a).toFloat() * (tickOuter - len)
-            val w = if (major) size * 0.013f else size * 0.007f
-            if (lit) {
-                litGlow.strokeWidth = w * 2f
-                c.drawLine(x1, y1, x2, y2, litGlow)
-            }
-            tickPaint.strokeWidth = w
-            tickPaint.color = if (lit) RED else RED_DIM
-            c.drawLine(x1, y1, x2, y2, tickPaint)
+        if (running) {
+            c.drawLine(x0, y0, x1, y1, needleGlow)
         }
+        c.drawLine(x0, y0, x1, y1, needle)
 
-        // Vitesse (grand nombre central)
-        val speedText = if (running) speedKmh.roundToInt().toString() else "--"
-        val speedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // Chiffre de la vitesse
+        val text = if (running) speedKmh.roundToInt().toString() else "--"
+        val number = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = size * if (speedText.length >= 3) 0.22f else 0.27f
-            setShadowLayer(size * 0.035f, 0f, 0f, RED)
+            textSize = if (text.length >= 3) s.numSize3 else s.numSize
+            setShadowLayer(s.numSize * 0.12f, 0f, 0f, RED)
         }
-        val fm = speedPaint.fontMetrics
-        val speedY = cy - (fm.ascent + fm.descent) / 2f - size * 0.03f
-        c.drawText(speedText, cx, speedY, speedPaint)
+        val fm = number.fontMetrics
+        c.drawText(text, s.numX, s.numY - (fm.ascent + fm.descent) / 2f, number)
 
-        // Unité
-        val unitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = RED
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = size * 0.08f
-        }
-        c.drawText("km/h", cx, cy + size * 0.17f, unitPaint)
-
-        // Petit message d'aide (quand le suivi est arrêté)
-        if (hint != null) {
+        // Message d'aide quand le suivi est arrêté
+        if (hint != null && !running) {
             val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(190, 255, 255, 255)
+                color = Color.argb(200, 255, 255, 255)
                 textAlign = Paint.Align.CENTER
-                textSize = size * 0.05f
+                textSize = s.hintSize
             }
-            c.drawText(hint, cx, cy + size * 0.28f, hintPaint)
+            c.drawText(hint, s.numX, s.hintY, hintPaint)
         }
+
+        return out
+    }
+
+    /** Secteur « camembert » entre deux angles (0 = haut, sens horaire). */
+    private fun wedge(cx: Float, cy: Float, r: Float, fromDeg: Float, toDeg: Float): Path {
+        val p = Path()
+        p.moveTo(cx, cy)
+        p.arcTo(RectF(cx - r, cy - r, cx + r, cy + r), fromDeg - 90f, toDeg - fromDeg)
+        p.close()
+        return p
     }
 }
