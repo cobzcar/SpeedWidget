@@ -52,7 +52,46 @@ object GaugeRenderer {
         draw(c, w / 2f, h * 0.31f, size, speedKmh, running, null, 240f, 235)
         return bmp
     }
+	fun renderOnSpeed(
+		context: Context,
+		size: Int,
+		speedKmh: Float,
+		running: Boolean,
+		hint: String?
+	): Bitmap {
+		val bmp = Bitmap.createBitmap(
+			size, size, Bitmap.Config.ARGB_8888
+		)
+		val canvas = Canvas(bmp)
 
+		val background = BitmapFactory.decodeResource(
+			context.resources,
+			R.drawable.bg_speed,
+			BitmapFactory.Options().apply { inScaled = false }
+		)
+
+		canvas.drawBitmap(
+			background,
+			null,
+			Rect(0, 0, size, size),
+			Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+		)
+
+		draw(
+			canvas,
+			size / 2f,
+			size / 2f,
+			size,
+			speedKmh,
+			running,
+			hint,
+			240f,
+			255
+		)
+
+		background.recycle()
+		return bmp
+	}
     private var cachedCar: Bitmap? = null
 
     private fun carBackground(context: Context): Bitmap =

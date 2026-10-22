@@ -84,12 +84,21 @@ class SpeedWidgetProvider : AppWidgetProvider() {
                     )
                 }
 
-                MEDIUM -> RemoteViews(context.packageName, R.layout.widget_medium).apply {
-                    setImageViewBitmap(
-                        R.id.gauge_image,
-                        GaugeRenderer.render(320, s.speedKmh, s.running, hint)
-                    )
-                }
+				MEDIUM -> RemoteViews(
+					context.packageName,
+					R.layout.widget_medium
+				).apply {
+					setImageViewBitmap(
+						R.id.gauge_image,
+						GaugeRenderer.renderOnSpeed(
+							context,
+							320,
+							s.speedKmh,
+							s.running,
+							hint
+						)
+					)
+				}
 
                 else -> RemoteViews(context.packageName, R.layout.widget_large).apply {
                     setImageViewBitmap(
