@@ -52,6 +52,7 @@ object GaugeRenderer {
         val needleInner: Float, val needleOuter: Float, val needleWidth: Float,
         // anneau extérieur de l'image (moyen) ou arc dessiné (grand)
         val ring: Ring?,
+        val ringOpacity: Float,           // opacité de l'anneau extérieur de l'image : 1 = opaque, 0 = invisible
         val arcR: Float, val arcWidth: Float,
         // textes
         val numX: Float, val numY: Float, val numSize: Float, val numSize3: Float,
@@ -65,6 +66,7 @@ object GaugeRenderer {
         tickLit = Color.rgb(255, 236, 226), tickGlowBlur = 5f, redTicks = true,
         needleInner = 128f, needleOuter = 182f, needleWidth = 6f,
         ring = Ring(255.5f, 270.5f, 204f, 232f, -118.4f, 118.4f),
+        ringOpacity = 0.45f,   // <-- RÉGLER ICI la transparence de l'anneau (0.0 à 1.0)
         arcR = 0f, arcWidth = 0f,
         numX = 280f, numY = 240f, numSize = 124f, numSize3 = 104f,
         hintY = 300f, hintSize = 20f
@@ -77,6 +79,7 @@ object GaugeRenderer {
         tickLit = Color.rgb(255, 84, 64), tickGlowBlur = 2.5f, redTicks = false,
         needleInner = 80f, needleOuter = 104f, needleWidth = 3f,
         ring = null,
+        ringOpacity = 1f,
         arcR = 110.5f, arcWidth = 5f,
         numX = 162f, numY = 172f, numSize = 48f, numSize3 = 40f,
         hintY = 198f, hintSize = 10f
@@ -160,10 +163,24 @@ object GaugeRenderer {
         fun glow(bm: Bitmap, blur: Float): Bitmap =
             bm.extractAlpha(Paint().apply { maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL) }, null)
 
+        // Anneau extérieur semi-transparent : on baisse l'alpha des pixels de l'anneau dans l'image de fond
+        var shown = base
+        if (ring != null && spec.ringOpacity < 1f) {
+            for (i in px.indices) {
+                val weight = Color.alpha(ring[i]) / 255f
+                if (weight > 0f) {
+                    val newAlpha = (Color.alpha(px[i]) * (1f - weight * (1f - spec.ringOpacity))).toInt()
+                    px[i] = (px[i] and 0x00FFFFFF) or (newAlpha shl 24)
+                }
+            }
+            shown = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            shown.setPixels(px, 0, w, 0, 0, w, h)
+        }
+
         val tickLit = layer(ticks)
         val ringLit = ring?.let { layer(it) }
         Face(
-            spec, base, tickLit, glow(tickLit, spec.tickGlowBlur),
+            spec, shown, tickLit, glow(tickLit, spec.tickGlowBlur),
             ringLit, ringLit?.let { glow(it, 4f) }
         )
     }
