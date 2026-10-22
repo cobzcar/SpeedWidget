@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Compteur Vitesse</string>
+    <string name="widget_description">Compteur de vitesse GPS redimensionnable (petit, moyen, grand)</string>
+
+    <string name="tap_to_start">Touchez pour démarrer</string>
+    <string name="tap_to_stop">Touchez pour arrêter</string>
+
+    <string name="trip_label">TRAJET</string>
+    <string name="max_label">VITESSE MAX</string>
+
+    <string name="start">Démarrer le suivi</string>
+    <string name="stop">Arrêter</string>
+    <string name="reset_trip">Réinitialiser trajet et vitesse max</string>
+    <string name="add_widget">Ajouter le widget à l\'écran d\'accueil</string>
+    <string name="status_on">Suivi GPS actif</string>
+    <string name="status_off">Suivi GPS arrêté</string>
+    <string name="permission_needed">La permission de localisation est nécessaire pour mesurer la vitesse.</string>
+    <string name="pin_unsupported">Votre lanceur ne permet pas l\'ajout direct. Faites un appui long sur l\'écran d\'accueil, puis Widgets.</string>
+    <string name="help">Astuce : appuyez sur le widget pour démarrer ou arrêter le suivi. Étirez-le pour passer de petit (texte) à moyen (jauge) puis grand (jauge + trajet).</string>
+
+    <string name="notif_channel">Suivi de la vitesse</string>
+    <string name="notif_title">Compteur de vitesse actif</string>
+    <string name="notif_text">Le GPS est utilisé pour afficher la vitesse.</string>
+</resources>
