@@ -61,7 +61,8 @@ object GaugeRenderer {
         val needleInner: Float, val needleOuter: Float, val needleWidth: Float,
         // anneau extérieur de l'image (moyen) ou arc dessiné (grand)
         val ring: Ring?,
-        val ringOpacity: Float,           // opacité de l'anneau extérieur de l'image : 1 = opaque, 0 = invisible
+        val ringOpacity: Float,           // opacité de l'anneau FIXE de l'image : 1 = inchangé (laisser à 1 sauf envie contraire)
+        val fillOpacity: Float,           // opacité du REMPLISSAGE de la jauge (partie qui s'allume) : 1 = opaque, 0 = invisible
         val geomRing: GeomRing?,
         val arcR: Float, val arcWidth: Float,
         // textes
@@ -76,7 +77,8 @@ object GaugeRenderer {
         tickLit = Color.rgb(255, 236, 226), tickGlowBlur = 5f, redTicks = true,
         needleInner = 128f, needleOuter = 182f, needleWidth = 6f,
         ring = Ring(255.5f, 270.5f, 204f, 232f, -118.4f, 118.4f),
-        ringOpacity = 0.45f,   // <-- RÉGLER ICI la transparence de l'anneau (0.0 à 1.0)
+        ringOpacity = 1f,
+        fillOpacity = 0.55f,   // <-- RÉGLER ICI la transparence du remplissage de la jauge (0.0 à 1.0)
         geomRing = null,
         arcR = 0f, arcWidth = 0f,
         numX = 256f, numY = 250f, numSize = 124f, numSize3 = 104f,
@@ -90,7 +92,8 @@ object GaugeRenderer {
         tickLit = Color.rgb(255, 84, 64), tickGlowBlur = 2.5f, redTicks = false,
         needleInner = 80f, needleOuter = 104f, needleWidth = 3f,
         ring = null,
-        ringOpacity = 0.45f,   // <-- RÉGLER ICI la transparence de l'anneau du grand widget (0.0 à 1.0)
+        ringOpacity = 1f,
+        fillOpacity = 0.55f,   // <-- RÉGLER ICI la transparence du remplissage de la jauge (0.0 à 1.0)
         geomRing = GeomRing(162.25f, 168.5f, 105f, 116.5f, 115f, 135f),
         arcR = 110.5f, arcWidth = 5f,
         numX = 162.25f, numY = 170f, numSize = 48f, numSize3 = 40f,
@@ -284,10 +287,12 @@ object GaugeRenderer {
             // Graduations allumées jusqu'à la vitesse actuelle
             c.save()
             c.clipPath(wedge(s.cx, s.cy, s.tickMaxR + 80f, s.a0, angle))
-            val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = RED; alpha = 255 }
+            val fillAlpha = (255 * s.fillOpacity).toInt().coerceIn(0, 255)
+            val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = RED; alpha = fillAlpha }
+            val litPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { alpha = fillAlpha }
             c.drawBitmap(f.tickGlow, 0f, 0f, glowPaint)
             c.drawBitmap(f.tickGlow, 0f, 0f, glowPaint)
-            c.drawBitmap(f.tickLit, 0f, 0f, bitmapPaint)
+            c.drawBitmap(f.tickLit, 0f, 0f, litPaint)
             c.restore()
 
             // Anneau extérieur de l'image (moyen)
@@ -297,7 +302,7 @@ object GaugeRenderer {
                 c.save()
                 c.clipPath(wedge(rg.cx, rg.cy, rg.maxR + 80f, rg.a0, ringAngle))
                 c.drawBitmap(f.ringGlow, 0f, 0f, glowPaint)
-                c.drawBitmap(f.ringLit, 0f, 0f, bitmapPaint)
+                c.drawBitmap(f.ringLit, 0f, 0f, litPaint)
                 c.restore()
             }
 
@@ -310,12 +315,14 @@ object GaugeRenderer {
                     strokeCap = Paint.Cap.ROUND
                     color = s.tickLit
                     maskFilter = BlurMaskFilter(s.arcWidth * 0.9f, BlurMaskFilter.Blur.NORMAL)
+                    alpha = fillAlpha
                 }
                 val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     style = Paint.Style.STROKE
                     strokeWidth = s.arcWidth
                     strokeCap = Paint.Cap.ROUND
                     color = s.tickLit
+                    alpha = fillAlpha
                 }
                 c.drawArc(rect, s.a0 - 90f, angle - s.a0, false, arcGlow)
                 c.drawArc(rect, s.a0 - 90f, angle - s.a0, false, arc)
