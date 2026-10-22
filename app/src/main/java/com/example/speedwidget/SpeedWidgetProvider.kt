@@ -8,16 +8,15 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
-import android.util.SizeF
+import android.content.res.Configuration
 import android.widget.RemoteViews
 import kotlin.math.roundToInt
 
 /**
  * Widget compteur de vitesse, redimensionnable, avec 3 présentations :
  *  - PETIT  : texte de la vitesse + km/h
- *  - MOYEN  : jauge néon avec la vitesse au centre
- *  - GRAND  : jauge néon + distance du trajet + vitesse max
+ *  - MOYEN  : cadran carré (widget_medium.png) + vitesse et jauge
+ *  - GRAND  : cadran + voiture (widget_grand.png) + vitesse et jauge
  */
 class SpeedWidgetProvider : AppWidgetProvider() {
 
@@ -50,28 +49,31 @@ class SpeedWidgetProvider : AppWidgetProvider() {
         private fun update(context: Context, manager: AppWidgetManager, id: Int) {
             val state = SpeedState.read(context)
 
-            val views = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12+ : le système choisit la présentation selon la taille réelle
-                RemoteViews(
-                    mapOf(
-                        SizeF(40f, 40f) to build(context, SMALL, state),
-                        SizeF(100f, 100f) to build(context, MEDIUM, state),
-                        SizeF(110f, 170f) to build(context, LARGE, state)
-                    )
-                )
-            } else {
-                // Android 8 à 11 : on lit la taille du widget et on choisit nous-mêmes
-                val o = manager.getAppWidgetOptions(id)
-                val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
-                val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
-                val kind = when {
-                    w >= 105 && h >= 165 -> LARGE
-                    w >= 95 && h >= 95 -> MEDIUM
-                    else -> SMALL
-                }
-                build(context, kind, state)
-            }
-            manager.updateAppWidget(id, views)
+            // Taille réelle du widget sur l'écran d'accueil (en dp), selon l'orientation du téléphone
+            val o = manager.getAppWidgetOptions(id)
+            val landscape =
+                context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val w = o.getInt(
+                if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH
+                else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0
+            )
+            val h = o.getInt(
+                if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
+                else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0
+            )
+            manager.updateAppWidget(id, build(context, pickKind(w, h), state))
+        }
+
+        /**
+         * Choix de la présentation d'après la FORME du widget (et non des seuils fixes) :
+         *  - un côté inférieur à 110 dp (ex. 1x1, 2x1, 3x1)  -> PETIT (texte)
+         *  - plutôt carré (ex. 2x2, 3x3, 3x2)                 -> MOYEN (cadran carré)
+         *  - nettement plus haut que large (ex. 2x3, 2x4)     -> GRAND (cadran + voiture)
+         */
+        private fun pickKind(w: Int, h: Int): Int {
+            if (w <= 0 || h <= 0) return MEDIUM
+            if (minOf(w, h) < 110) return SMALL
+            return if (h.toFloat() / w >= 1.35f) LARGE else MEDIUM
         }
 
         private fun build(context: Context, kind: Int, s: SpeedSnapshot): RemoteViews {
