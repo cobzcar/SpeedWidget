@@ -2,8 +2,11 @@ package com.example.speedwidget
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ViewConfiguration
@@ -20,6 +23,7 @@ import kotlin.math.roundToInt
  *  - glisser            : déplacer
  *  - pincer             : agrandir / réduire
  *  - appui simple       : changer de format (petit -> moyen -> grand)
+ *  - appui long         : supprimer le widget flottant
  */
 class OverlayController(private val context: Context) {
 
@@ -111,6 +115,15 @@ class OverlayController(private val context: Context) {
         var downTime = 0L
         var moved = false
 
+        // Appui long : supprime le widget flottant
+        val handler = Handler(Looper.getMainLooper())
+        val longPress = Runnable {
+            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            setEnabled(context, false)
+            hide()
+            Toast.makeText(context, R.string.overlay_removed, Toast.LENGTH_SHORT).show()
+        }
+
         val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(d: ScaleGestureDetector): Boolean {
                 scale = (scale * d.scaleFactor).coerceIn(MIN_SCALE, MAX_SCALE)
@@ -123,6 +136,7 @@ class OverlayController(private val context: Context) {
             pinch.onTouchEvent(e)
             if (pinch.isInProgress) {
                 moved = true
+                handler.removeCallbacks(longPress)
                 return@setOnTouchListener true
             }
             when (e.actionMasked) {
@@ -131,7 +145,9 @@ class OverlayController(private val context: Context) {
                     startX = p.x; startY = p.y
                     downTime = e.eventTime
                     moved = false
+                    handler.postDelayed(longPress, LONG_PRESS_MS)
                 }
+                MotionEvent.ACTION_POINTER_DOWN -> handler.removeCallbacks(longPress)
                 MotionEvent.ACTION_POINTER_UP -> {
                     // un doigt est levé après un pincement : on repart de la position actuelle
                     downX = e.rawX; downY = e.rawY
@@ -140,14 +156,19 @@ class OverlayController(private val context: Context) {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX
                     val dy = e.rawY - downY
-                    if (abs(dx) > slop || abs(dy) > slop) moved = true
+                    if (abs(dx) > slop || abs(dy) > slop) {
+                        moved = true
+                        handler.removeCallbacks(longPress)
+                    }
                     if (moved && e.pointerCount == 1) {
                         p.x = startX + dx.toInt()
                         p.y = startY + dy.toInt()
                         runCatching { wm.updateViewLayout(v, p) }
                     }
                 }
+                MotionEvent.ACTION_CANCEL -> handler.removeCallbacks(longPress)
                 MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(longPress)
                     if (!moved && e.eventTime - downTime < 400) {
                         kind = (kind + 1) % 3
                         applySize()
@@ -173,6 +194,7 @@ class OverlayController(private val context: Context) {
         private const val MEDIUM = 1
         private const val LARGE = 2
 
+        private const val LONG_PRESS_MS = 700L
         private const val MIN_SCALE = 0.5f
         private const val MAX_SCALE = 3f
 

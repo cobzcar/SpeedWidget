@@ -34,7 +34,7 @@ Certains écrans n'acceptent pas les widgets Android. L'application propose alor
 
 1. Ouvrez l'app puis appuyez sur **Afficher le widget flottant**.
 2. Autorisez « Afficher par-dessus les autres applis », revenez dans l'app et appuyez de nouveau (le suivi GPS démarre).
-3. Sur le widget : **glisser** = déplacer · **pincer** = redimensionner · **appui simple** = changer de format (petit → moyen → grand).
+3. Sur le widget : **glisser** = déplacer · **pincer** = redimensionner · **appui simple** = changer de format (petit → moyen → grand) · **appui long** = supprimer le widget flottant.
 4. Pour l'arrêter : bouton **Masquer le widget flottant**, ou **Arrêter** dans la notification.
 
 Si l'écran « par-dessus les autres applis » n'existe pas sur la box, accordez la permission par ADB :
