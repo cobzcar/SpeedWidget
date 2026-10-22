@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import kotlin.math.abs
@@ -39,6 +40,12 @@ object GaugeRenderer {
         val a0: Float, val a1: Float
     )
 
+    /** Anneau (cadre) rendu semi-transparent par géométrie : utile quand l'anneau n'est pas rouge. */
+    private class GeomRing(
+        val cx: Float, val cy: Float, val minR: Float, val maxR: Float,
+        val fullAngle: Float, val zeroAngle: Float   // transparence complète jusqu'à fullAngle, nulle à partir de zeroAngle
+    )
+
     private class Spec(
         val resId: Int,
         // graduations
@@ -53,6 +60,7 @@ object GaugeRenderer {
         // anneau extérieur de l'image (moyen) ou arc dessiné (grand)
         val ring: Ring?,
         val ringOpacity: Float,           // opacité de l'anneau extérieur de l'image : 1 = opaque, 0 = invisible
+        val geomRing: GeomRing?,
         val arcR: Float, val arcWidth: Float,
         // textes
         val numX: Float, val numY: Float, val numSize: Float, val numSize3: Float,
@@ -67,8 +75,9 @@ object GaugeRenderer {
         needleInner = 128f, needleOuter = 182f, needleWidth = 6f,
         ring = Ring(255.5f, 270.5f, 204f, 232f, -118.4f, 118.4f),
         ringOpacity = 0.45f,   // <-- RÉGLER ICI la transparence de l'anneau (0.0 à 1.0)
+        geomRing = null,
         arcR = 0f, arcWidth = 0f,
-        numX = 280f, numY = 240f, numSize = 124f, numSize3 = 104f,
+        numX = 256f, numY = 250f, numSize = 124f, numSize3 = 104f,
         hintY = 300f, hintSize = 20f
     )
 
@@ -79,9 +88,10 @@ object GaugeRenderer {
         tickLit = Color.rgb(255, 84, 64), tickGlowBlur = 2.5f, redTicks = false,
         needleInner = 80f, needleOuter = 104f, needleWidth = 3f,
         ring = null,
-        ringOpacity = 1f,
+        ringOpacity = 0.45f,   // <-- RÉGLER ICI la transparence de l'anneau du grand widget (0.0 à 1.0)
+        geomRing = GeomRing(162.25f, 168.5f, 105f, 116.5f, 115f, 135f),
         arcR = 110.5f, arcWidth = 5f,
-        numX = 162f, numY = 172f, numSize = 48f, numSize3 = 40f,
+        numX = 162.25f, numY = 170f, numSize = 48f, numSize3 = 40f,
         hintY = 198f, hintSize = 10f
     )
 
@@ -165,7 +175,9 @@ object GaugeRenderer {
 
         // Anneau extérieur semi-transparent : on baisse l'alpha des pixels de l'anneau dans l'image de fond
         var shown = base
+        var changed = false
         if (ring != null && spec.ringOpacity < 1f) {
+            changed = true
             for (i in px.indices) {
                 val weight = Color.alpha(ring[i]) / 255f
                 if (weight > 0f) {
@@ -173,6 +185,28 @@ object GaugeRenderer {
                     px[i] = (px[i] and 0x00FFFFFF) or (newAlpha shl 24)
                 }
             }
+        }
+        val gr = spec.geomRing
+        if (gr != null && spec.ringOpacity < 1f) {
+            changed = true
+            for (y in 0 until h) {
+                for (x in 0 until w) {
+                    val rr = hypot(x - gr.cx, y - gr.cy)
+                    if (rr < gr.minR - 1.5f || rr > gr.maxR + 1.5f) continue
+                    val ang = abs(Math.toDegrees(atan2((x - gr.cx).toDouble(), -(y - gr.cy).toDouble())).toFloat())
+                    val wr = ((rr - (gr.minR - 1.5f)) / 3f).coerceIn(0f, 1f) *
+                        (((gr.maxR + 1.5f) - rr) / 3f).coerceIn(0f, 1f)
+                    val wa = ((gr.zeroAngle - ang) / (gr.zeroAngle - gr.fullAngle)).coerceIn(0f, 1f)
+                    val weight = wr * wa
+                    if (weight > 0f) {
+                        val i = y * w + x
+                        val newAlpha = (Color.alpha(px[i]) * (1f - weight * (1f - spec.ringOpacity))).toInt()
+                        px[i] = (px[i] and 0x00FFFFFF) or (newAlpha shl 24)
+                    }
+                }
+            }
+        }
+        if (changed) {
             shown = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             shown.setPixels(px, 0, w, 0, 0, w, h)
         }
@@ -275,13 +309,15 @@ object GaugeRenderer {
         val text = if (running) speedKmh.roundToInt().toString() else "--"
         val number = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textAlign = Paint.Align.CENTER
+            textAlign = Paint.Align.LEFT
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textSize = if (text.length >= 3) s.numSize3 else s.numSize
             setShadowLayer(s.numSize * 0.12f, 0f, 0f, RED)
         }
-        val fm = number.fontMetrics
-        c.drawText(text, s.numX, s.numY - (fm.ascent + fm.descent) / 2f, number)
+        // Centrage réel des chiffres : on centre le rectangle exact occupé par le texte (horizontal et vertical)
+        val tb = Rect()
+        number.getTextBounds(text, 0, text.length, tb)
+        c.drawText(text, s.numX - (tb.left + tb.right) / 2f, s.numY - (tb.top + tb.bottom) / 2f, number)
 
         // Message d'aide quand le suivi est arrêté
         if (hint != null && !running) {
