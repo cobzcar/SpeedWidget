@@ -95,19 +95,33 @@ class OverlayController(private val context: Context) {
         iv.setImageBitmap(bmp)
     }
 
+    /** Le widget flottant ne peut pas dépasser la taille de l'écran. */
+    private fun maxScale(): Float {
+        val dm = context.resources.displayMetrics
+        val byW = dm.widthPixels / (BASE_W_DP[kind] * density)
+        val byH = dm.heightPixels / (BASE_H_DP[kind] * density)
+        return minOf(MAX_SCALE, byW, byH).coerceAtLeast(MIN_SCALE)
+    }
+
     private fun widthPx() = (BASE_W_DP[kind] * scale * density).roundToInt()
     private fun heightPx() = (BASE_H_DP[kind] * scale * density).roundToInt()
 
     private fun applySize() {
         val p = lp ?: return
+        scale = scale.coerceIn(MIN_SCALE, maxScale())
         p.width = widthPx()
         p.height = heightPx()
+        // reste entièrement visible à l'écran
+        val dm = context.resources.displayMetrics
+        p.x = p.x.coerceIn(0, maxOf(0, dm.widthPixels - p.width))
+        p.y = p.y.coerceIn(0, maxOf(0, dm.heightPixels - p.height))
         view?.let { runCatching { wm.updateViewLayout(it, p) } }
         prefs.edit().putInt(K_KIND, kind).putFloat(K_SCALE, scale).apply()
     }
 
     private fun attachTouch(v: ImageView, p: WindowManager.LayoutParams) {
-        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        // tolérance plus large que le minimum système : un doigt posé bouge toujours un peu
+        val slop = maxOf(ViewConfiguration.get(context).scaledTouchSlop, (14 * density).toInt())
         var downX = 0f
         var downY = 0f
         var startX = 0
@@ -118,25 +132,38 @@ class OverlayController(private val context: Context) {
         // Appui long : supprime le widget flottant
         val handler = Handler(Looper.getMainLooper())
         val longPress = Runnable {
+            v.alpha = 1f
             v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             setEnabled(context, false)
             hide()
             Toast.makeText(context, R.string.overlay_removed, Toast.LENGTH_SHORT).show()
         }
 
+        // Retour visuel : le widget s'estompe pendant l'appui (confirme que le toucher est bien reçu)
+        val pressHint = Runnable { v.alpha = 0.55f }
+        fun release() {
+            handler.removeCallbacks(longPress)
+            handler.removeCallbacks(pressHint)
+            v.alpha = 1f
+        }
+
         val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(d: ScaleGestureDetector): Boolean {
-                scale = (scale * d.scaleFactor).coerceIn(MIN_SCALE, MAX_SCALE)
+                scale = (scale * d.scaleFactor).coerceIn(MIN_SCALE, maxScale())
                 applySize()
                 return true
             }
         })
 
+        // Le « double appui puis glisser » du détecteur de pincement interférait avec l'appui long
+        pinch.isQuickScaleEnabled = false
+        pinch.isStylusScaleEnabled = false
+
         v.setOnTouchListener { _, e ->
             pinch.onTouchEvent(e)
             if (pinch.isInProgress) {
                 moved = true
-                handler.removeCallbacks(longPress)
+                release()
                 return@setOnTouchListener true
             }
             when (e.actionMasked) {
@@ -145,9 +172,10 @@ class OverlayController(private val context: Context) {
                     startX = p.x; startY = p.y
                     downTime = e.eventTime
                     moved = false
+                    handler.postDelayed(pressHint, PRESS_HINT_MS)
                     handler.postDelayed(longPress, LONG_PRESS_MS)
                 }
-                MotionEvent.ACTION_POINTER_DOWN -> handler.removeCallbacks(longPress)
+                MotionEvent.ACTION_POINTER_DOWN -> release()
                 MotionEvent.ACTION_POINTER_UP -> {
                     // un doigt est levé après un pincement : on repart de la position actuelle
                     downX = e.rawX; downY = e.rawY
@@ -158,7 +186,7 @@ class OverlayController(private val context: Context) {
                     val dy = e.rawY - downY
                     if (abs(dx) > slop || abs(dy) > slop) {
                         moved = true
-                        handler.removeCallbacks(longPress)
+                        release()
                     }
                     if (moved && e.pointerCount == 1) {
                         p.x = startX + dx.toInt()
@@ -166,9 +194,9 @@ class OverlayController(private val context: Context) {
                         runCatching { wm.updateViewLayout(v, p) }
                     }
                 }
-                MotionEvent.ACTION_CANCEL -> handler.removeCallbacks(longPress)
+                MotionEvent.ACTION_CANCEL -> release()
                 MotionEvent.ACTION_UP -> {
-                    handler.removeCallbacks(longPress)
+                    release()
                     if (!moved && e.eventTime - downTime < 400) {
                         kind = (kind + 1) % 3
                         applySize()
@@ -194,7 +222,8 @@ class OverlayController(private val context: Context) {
         private const val MEDIUM = 1
         private const val LARGE = 2
 
-        private const val LONG_PRESS_MS = 700L
+        private const val PRESS_HINT_MS = 250L
+        private const val LONG_PRESS_MS = 600L
         private const val MIN_SCALE = 0.5f
         private const val MAX_SCALE = 3f
 

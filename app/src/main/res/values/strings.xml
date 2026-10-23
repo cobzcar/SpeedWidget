@@ -17,6 +17,7 @@
     <string name="overlay_off">Masquer le widget flottant</string>
     <string name="overlay_permission">Autorisez « Afficher par-dessus les autres applis » pour cette application, puis revenez et appuyez de nouveau.</string>
     <string name="overlay_no_settings">Impossible d\'ouvrir ce réglage sur cet appareil. Activez-le par ADB (voir le README).</string>
+    <string name="overlay_toggle">Widget</string>
     <string name="overlay_removed">Widget flottant supprimé</string>
     <string name="overlay_failed">Impossible d\'afficher le widget flottant.</string>
     <string name="status_on">Suivi GPS actif</string>

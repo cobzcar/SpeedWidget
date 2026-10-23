@@ -53,6 +53,7 @@ object GaugeRenderer {
         // graduations
         val cx: Float, val cy: Float,
         val a0: Float, val a1: Float,
+        val tickAngles: FloatArray?,      // angles réels des graduations principales (null = répartition régulière a0..a1)
         val tickMinR: Float, val tickMaxR: Float,
         val tickLit: Int,
         val tickGlowBlur: Float,
@@ -72,7 +73,7 @@ object GaugeRenderer {
 
     private val MEDIUM = Spec(
         resId = R.drawable.face_medium,
-        cx = 256f, cy = 262f, a0 = -112f, a1 = 112f,
+        cx = 256f, cy = 262f, a0 = -112.5f, a1 = 112.5f, tickAngles = null,
         tickMinR = 120f, tickMaxR = 196f,
         tickLit = Color.rgb(255, 236, 226), tickGlowBlur = 5f, redTicks = true,
         needleInner = 128f, needleOuter = 182f, needleWidth = 6f,
@@ -87,14 +88,16 @@ object GaugeRenderer {
 
     private val LARGE = Spec(
         resId = R.drawable.face_large,
-        cx = 162.25f, cy = 168.5f, a0 = -150f, a1 = 150f,
+        cx = 162f, cy = 168f, a0 = -144f, a1 = 144f,
+        // graduations mesurées sur widget_grand.png (écarts irréguliers) : l'aiguille tombe pile dessus
+        tickAngles = floatArrayOf(-144f, -117f, -90f, -62f, -33f, 0f, 33f, 62f, 90f, 117f, 144f),
         tickMinR = 78f, tickMaxR = 106f,
         tickLit = Color.rgb(255, 84, 64), tickGlowBlur = 2.5f, redTicks = false,
         needleInner = 80f, needleOuter = 104f, needleWidth = 3f,
         ring = null,
         ringOpacity = 1f,
         fillOpacity = 0.55f,   // <-- RÉGLER ICI la transparence du remplissage de la jauge (0.0 à 1.0)
-        geomRing = GeomRing(162.25f, 168.5f, 105f, 116.5f, 115f, 135f),
+        geomRing = GeomRing(162f, 168f, 105f, 116.5f, 115f, 135f),
         arcR = 110.5f, arcWidth = 5f,
         numX = 162.25f, numY = 170f, numSize = 48f, numSize3 = 40f,
         hintY = 198f, hintSize = 10f
@@ -281,7 +284,7 @@ object GaugeRenderer {
         c.drawBitmap(f.base, 0f, 0f, bitmapPaint)
 
         val frac = if (running) (speedKmh / MAX_KMH).coerceIn(0f, 1f) else 0f
-        val angle = s.a0 + (s.a1 - s.a0) * frac
+        val angle = angleFor(s, frac)
 
         if (frac > 0f) {
             // Graduations allumées jusqu'à la vitesse actuelle
@@ -378,6 +381,14 @@ object GaugeRenderer {
         }
 
         return out
+    }
+
+    /** Angle de l'aiguille : suit les vraies graduations de l'image quand elles sont connues. */
+    private fun angleFor(s: Spec, frac: Float): Float {
+        val t = s.tickAngles ?: return s.a0 + (s.a1 - s.a0) * frac
+        val pos = frac * (t.size - 1)
+        val i = pos.toInt().coerceIn(0, t.size - 2)
+        return t[i] + (t[i + 1] - t[i]) * (pos - i)
     }
 
     /** Secteur « camembert » entre deux angles (0 = haut, sens horaire). */

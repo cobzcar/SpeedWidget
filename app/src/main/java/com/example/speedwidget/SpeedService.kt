@@ -39,6 +39,18 @@ class SpeedService : Service(), LocationListener {
             return START_NOT_STICKY
         }
 
+        // Bouton de la notification : masquer / afficher le widget flottant
+        if (intent?.action == ACTION_OVERLAY_TOGGLE) {
+            if (SpeedState.read(this).running) {
+                OverlayController.setEnabled(this, !OverlayController.isEnabled(this))
+                overlay.syncWithPrefs()
+                overlay.update(SpeedState.read(this))
+                return START_STICKY
+            }
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         // Activer / désactiver le widget flottant pendant que le suivi tourne
         if (intent?.action == ACTION_OVERLAY_SYNC) {
             if (SpeedState.read(this).running) {
@@ -121,6 +133,9 @@ class SpeedService : Service(), LocationListener {
 
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val openApp = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), flags)
+        val toggleOverlay = PendingIntent.getService(
+            this, 3, Intent(this, SpeedService::class.java).setAction(ACTION_OVERLAY_TOGGLE), flags
+        )
         val stop = PendingIntent.getService(
             this, 2, Intent(this, SpeedService::class.java).setAction(ACTION_STOP), flags
         )
@@ -130,6 +145,7 @@ class SpeedService : Service(), LocationListener {
             .setContentTitle(getString(R.string.notif_title))
             .setContentText(getString(R.string.notif_text))
             .setContentIntent(openApp)
+            .addAction(Notification.Action.Builder(null, getString(R.string.overlay_toggle), toggleOverlay).build())
             .addAction(Notification.Action.Builder(null, getString(R.string.stop), stop).build())
             .setOngoing(true)
             .build()
@@ -143,6 +159,7 @@ class SpeedService : Service(), LocationListener {
         const val ACTION_START = "com.example.speedwidget.START"
         const val ACTION_STOP = "com.example.speedwidget.STOP"
         const val ACTION_OVERLAY_SYNC = "com.example.speedwidget.OVERLAY_SYNC"
+        const val ACTION_OVERLAY_TOGGLE = "com.example.speedwidget.OVERLAY_TOGGLE"
         private const val CHANNEL_ID = "speed_tracking"
         private const val NOTIF_ID = 1
     }
