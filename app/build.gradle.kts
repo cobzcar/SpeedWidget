@@ -15,6 +15,16 @@ android {
         versionName = "1.0"
     }
 
+    // Clé de signature fixe : chaque APK est signé pareil, donc il s'installe par-dessus l'ancien
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
